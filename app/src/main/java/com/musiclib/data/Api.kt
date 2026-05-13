@@ -153,6 +153,20 @@ class MusicApi(private val settings: SettingsRepository) {
         val s = current()
         return if (s.authToken.isBlank()) null else "Bearer ${s.authToken}"
     }
+
+    suspend fun triggerScan(): ScanState {
+        val s = current()
+        return httpClient.post(urlOf(s.serverUrl, "/api/scans")) {
+            if (s.authToken.isNotBlank()) bearerAuth(s.authToken)
+        }.body()
+    }
+
+    suspend fun getScanStatus(): ScanState {
+        val s = current()
+        return httpClient.get(urlOf(s.serverUrl, "/api/scans")) {
+            if (s.authToken.isNotBlank()) bearerAuth(s.authToken)
+        }.body()
+    }
 }
 
 @Serializable

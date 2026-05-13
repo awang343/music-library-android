@@ -53,3 +53,21 @@ data class TrackTag(
     val source: String,
     val added_at: Long,
 )
+
+@Serializable
+data class ScanState(
+    val running: Boolean,
+    val started_at: Long? = null,
+    val finished_at: Long? = null,
+    val last_stats: ScanStats? = null,
+    val last_error: String? = null,
+)
+
+@Serializable
+data class ScanStats(
+    val seen: Long,
+    val inserted: Long,
+    val updated: Long,
+    val unchanged: Long,
+    val failed: Long,
+)

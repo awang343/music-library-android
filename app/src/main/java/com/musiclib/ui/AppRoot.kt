@@ -137,6 +137,7 @@ fun AppRoot(
             composable("settings") {
                 SettingsScreen(
                     repo = container.settings,
+                    api = container.api,
                     onSaved = {
                         if (!nav.popBackStack()) {
                             nav.navigate("songs") {
