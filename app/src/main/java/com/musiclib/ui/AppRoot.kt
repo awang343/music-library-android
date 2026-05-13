@@ -5,9 +5,9 @@ import androidx.compose.foundation.layout.WindowInsets
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.padding
 import androidx.compose.material.icons.Icons
+import androidx.compose.material.icons.automirrored.filled.PlaylistPlay
 import androidx.compose.material.icons.filled.LibraryMusic
 import androidx.compose.material.icons.filled.MusicNote
-import androidx.compose.material.icons.filled.PlaylistPlay
 import androidx.compose.material.icons.filled.Settings
 import androidx.compose.material3.Icon
 import androidx.compose.material3.NavigationBar
@@ -38,7 +38,7 @@ private data class TabItem(val route: String, val label: String, val icon: Image
 private val TABS = listOf(
     TabItem("songs", "Songs", Icons.Default.MusicNote),
     TabItem("playlists", "Playlists", Icons.Default.LibraryMusic),
-    TabItem("queue", "Queue", Icons.Default.PlaylistPlay),
+    TabItem("queue", "Queue", Icons.AutoMirrored.Filled.PlaylistPlay),
     TabItem("settings", "Settings", Icons.Default.Settings),
 )
 

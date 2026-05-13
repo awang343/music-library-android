@@ -15,9 +15,9 @@ import androidx.compose.foundation.lazy.items
 import androidx.compose.foundation.text.KeyboardActions
 import androidx.compose.foundation.text.KeyboardOptions
 import androidx.compose.material.icons.Icons
+import androidx.compose.material.icons.automirrored.filled.ArrowBack
 import androidx.compose.material.icons.automirrored.filled.PlaylistAdd
 import androidx.compose.material.icons.filled.Add
-import androidx.compose.material.icons.filled.ArrowBack
 import androidx.compose.material.icons.filled.LocalOffer
 import androidx.compose.material.icons.filled.PlayArrow
 import androidx.compose.material.icons.filled.Refresh
@@ -120,7 +120,7 @@ fun SongsScreen(
                     },
                     navigationIcon = {
                         IconButton(onClick = { exitSearch() }) {
-                            Icon(Icons.Default.ArrowBack, contentDescription = "Close search")
+                            Icon(Icons.AutoMirrored.Filled.ArrowBack, contentDescription = "Close search")
                         }
                     },
                     actions = {
