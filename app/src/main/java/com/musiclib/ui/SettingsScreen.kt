@@ -21,7 +21,6 @@ import androidx.compose.material3.ExperimentalMaterial3Api
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.DisposableEffect
 import androidx.compose.runtime.LaunchedEffect
-import androidx.compose.runtime.collectAsState
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
@@ -36,6 +35,7 @@ import com.musiclib.data.Settings
 import com.musiclib.data.SettingsRepository
 import kotlinx.coroutines.Job
 import kotlinx.coroutines.delay
+import kotlinx.coroutines.flow.first
 import kotlinx.coroutines.launch
 
 @OptIn(ExperimentalMaterial3Api::class)
@@ -46,22 +46,21 @@ fun SettingsScreen(
     onSaved: () -> Unit,
     onBack: (() -> Unit)? = null,
 ) {
-    val current by repo.flow.collectAsState(initial = Settings("", ""))
     var url by rememberSaveable { mutableStateOf("") }
     var token by rememberSaveable { mutableStateOf("") }
-    var initialized by remember { mutableStateOf(false) }
+    var initialized by rememberSaveable { mutableStateOf(false) }
     val scope = rememberCoroutineScope()
 
     var scanState by remember { mutableStateOf<ScanState?>(null) }
     var scanMessage by remember { mutableStateOf<String?>(null) }
     var pollJob by remember { mutableStateOf<Job?>(null) }
 
-    LaunchedEffect(current) {
-        if (!initialized) {
-            url = current.serverUrl
-            token = current.authToken
-            initialized = true
-        }
+    LaunchedEffect(Unit) {
+        if (initialized) return@LaunchedEffect
+        val saved = repo.flow.first()
+        url = saved.serverUrl
+        token = saved.authToken
+        initialized = true
     }
 
     DisposableEffect(Unit) {
