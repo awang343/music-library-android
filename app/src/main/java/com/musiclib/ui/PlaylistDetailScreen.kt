@@ -10,13 +10,13 @@ import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.lazy.LazyColumn
-import androidx.compose.foundation.lazy.itemsIndexed
+import androidx.compose.foundation.lazy.items
+import androidx.compose.foundation.lazy.rememberLazyListState
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.automirrored.filled.ArrowBack
 import androidx.compose.material.icons.automirrored.filled.PlaylistAdd
 import androidx.compose.material.icons.filled.Close
-import androidx.compose.material.icons.filled.KeyboardArrowDown
-import androidx.compose.material.icons.filled.KeyboardArrowUp
+import androidx.compose.material.icons.filled.DragHandle
 import androidx.compose.material.icons.filled.PlayArrow
 import androidx.compose.material3.ExperimentalMaterial3Api
 import androidx.compose.material3.HorizontalDivider
@@ -24,11 +24,16 @@ import androidx.compose.material3.Icon
 import androidx.compose.material3.IconButton
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.Scaffold
+import androidx.compose.material3.Surface
 import androidx.compose.material3.Text
 import androidx.compose.material3.TopAppBar
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.collectAsState
 import androidx.compose.runtime.getValue
+import androidx.compose.runtime.mutableStateOf
+import androidx.compose.runtime.remember
+import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.text.font.FontWeight
@@ -46,6 +51,8 @@ import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.asStateFlow
 import kotlinx.coroutines.launch
+import sh.calvin.reorderable.ReorderableItem
+import sh.calvin.reorderable.rememberReorderableLazyListState
 
 class PlaylistDetailViewModel(
     private val api: MusicApi,
@@ -81,19 +88,21 @@ class PlaylistDetailViewModel(
         }
     }
 
-    fun moveTrack(fromIndex: Int, toIndex: Int) {
+    fun moveTrackLocal(fromIndex: Int, toIndex: Int) {
         val cur = _tracks.value
         if (fromIndex !in cur.indices || toIndex !in cur.indices || fromIndex == toIndex) return
         val swapped = cur.toMutableList().also {
             val item = it.removeAt(fromIndex)
             it.add(toIndex, item)
         }
-        // Recompute positions for display.
-        val withPositions = swapped.mapIndexed { i, pt -> pt.copy(position = i.toLong()) }
-        _tracks.value = withPositions
+        _tracks.value = swapped.mapIndexed { i, pt -> pt.copy(position = i.toLong()) }
+    }
+
+    fun commitReorder() {
+        val snapshot = _tracks.value
         viewModelScope.launch {
             try {
-                api.setPlaylistTracks(playlistId, withPositions.map { it.track_id })
+                api.setPlaylistTracks(playlistId, snapshot.map { it.track_id })
             } catch (t: Throwable) {
                 _error.value = t.message ?: t.javaClass.simpleName
                 refresh()
@@ -119,6 +128,20 @@ fun PlaylistDetailScreen(
     )
     val tracks by vm.tracks.collectAsState()
     val error by vm.error.collectAsState()
+
+    val lazyState = rememberLazyListState()
+    val reorderableState = rememberReorderableLazyListState(lazyState) { from, to ->
+        vm.moveTrackLocal(from.index, to.index)
+    }
+
+    var wasDragging by remember { mutableStateOf(false) }
+    LaunchedEffect(reorderableState.isAnyItemDragging) {
+        val now = reorderableState.isAnyItemDragging
+        if (wasDragging && !now) {
+            vm.commitReorder()
+        }
+        wasDragging = now
+    }
 
     Scaffold(
         contentWindowInsets = WindowInsets(0, 0, 0, 0),
@@ -154,19 +177,23 @@ fun PlaylistDetailScreen(
                         style = MaterialTheme.typography.bodyMedium,
                         color = MaterialTheme.colorScheme.onSurfaceVariant,
                     )
-                else -> LazyColumn(modifier = Modifier.fillMaxSize()) {
-                    itemsIndexed(tracks, key = { _, t -> t.track_id }) { index, pt ->
-                        PlaylistTrackRow(
-                            pt = pt,
-                            isFirst = index == 0,
-                            isLast = index == tracks.size - 1,
-                            onPlay = { onPlayPlaylist(tracks.map { it.toTrack() }, index) },
-                            onEnqueue = { onEnqueueTrack(pt.toTrack()) },
-                            onRemove = { vm.removeTrack(pt.track_id) },
-                            onMoveUp = { vm.moveTrack(index, index - 1) },
-                            onMoveDown = { vm.moveTrack(index, index + 1) },
-                        )
-                        HorizontalDivider()
+                else -> LazyColumn(
+                    state = lazyState,
+                    modifier = Modifier.fillMaxSize(),
+                ) {
+                    items(tracks, key = { it.track_id }) { pt ->
+                        ReorderableItem(reorderableState, key = pt.track_id) { isDragging ->
+                            val index = tracks.indexOf(pt)
+                            PlaylistTrackRow(
+                                pt = pt,
+                                isDragging = isDragging,
+                                dragHandleModifier = Modifier.longPressDraggableHandle(),
+                                onPlay = { if (index >= 0) onPlayPlaylist(tracks.map { it.toTrack() }, index) },
+                                onEnqueue = { onEnqueueTrack(pt.toTrack()) },
+                                onRemove = { vm.removeTrack(pt.track_id) },
+                            )
+                            HorizontalDivider()
+                        }
                     }
                 }
             }
@@ -177,58 +204,52 @@ fun PlaylistDetailScreen(
 @Composable
 private fun PlaylistTrackRow(
     pt: PlaylistTrack,
-    isFirst: Boolean,
-    isLast: Boolean,
+    isDragging: Boolean,
+    dragHandleModifier: Modifier,
     onPlay: () -> Unit,
     onEnqueue: () -> Unit,
     onRemove: () -> Unit,
-    onMoveUp: () -> Unit,
-    onMoveDown: () -> Unit,
 ) {
-    Row(
-        modifier = Modifier
-            .fillMaxWidth()
-            .clickable(onClick = onPlay)
-            .padding(horizontal = 8.dp, vertical = 6.dp),
-        verticalAlignment = Alignment.CenterVertically,
-    ) {
-        Column {
-            IconButton(
-                onClick = onMoveUp,
-                enabled = !isFirst,
-                modifier = Modifier.size(24.dp),
-            ) {
-                Icon(Icons.Default.KeyboardArrowUp, contentDescription = "Move up", modifier = Modifier.size(20.dp))
-            }
-            IconButton(
-                onClick = onMoveDown,
-                enabled = !isLast,
-                modifier = Modifier.size(24.dp),
-            ) {
-                Icon(Icons.Default.KeyboardArrowDown, contentDescription = "Move down", modifier = Modifier.size(20.dp))
-            }
-        }
-        Column(modifier = Modifier.weight(1f).padding(start = 8.dp)) {
-            Text(
-                pt.title ?: "(untitled)",
-                style = MaterialTheme.typography.bodyLarge,
-                fontWeight = FontWeight.SemiBold,
-            )
-            Text(
-                "${pt.artist ?: pt.album_artist ?: "—"}  —  ${pt.album ?: "—"}",
-                style = MaterialTheme.typography.bodySmall,
-                color = MaterialTheme.colorScheme.onSurfaceVariant,
-            )
-        }
-        IconButton(onClick = onEnqueue) {
+    val bg = if (isDragging) {
+        MaterialTheme.colorScheme.surfaceVariant
+    } else {
+        MaterialTheme.colorScheme.surface
+    }
+    Surface(color = bg) {
+        Row(
+            modifier = Modifier
+                .fillMaxWidth()
+                .clickable(onClick = onPlay)
+                .padding(horizontal = 8.dp, vertical = 6.dp),
+            verticalAlignment = Alignment.CenterVertically,
+        ) {
             Icon(
-                Icons.AutoMirrored.Filled.PlaylistAdd,
-                contentDescription = "Add to queue",
-                modifier = Modifier.size(22.dp),
+                Icons.Default.DragHandle,
+                contentDescription = "Drag to reorder",
+                modifier = dragHandleModifier.size(28.dp),
             )
-        }
-        IconButton(onClick = onRemove) {
-            Icon(Icons.Default.Close, contentDescription = "Remove", modifier = Modifier.size(22.dp))
+            Column(modifier = Modifier.weight(1f).padding(start = 8.dp)) {
+                Text(
+                    pt.title ?: "(untitled)",
+                    style = MaterialTheme.typography.bodyLarge,
+                    fontWeight = FontWeight.SemiBold,
+                )
+                Text(
+                    "${pt.artist ?: pt.album_artist ?: "—"}  —  ${pt.album ?: "—"}",
+                    style = MaterialTheme.typography.bodySmall,
+                    color = MaterialTheme.colorScheme.onSurfaceVariant,
+                )
+            }
+            IconButton(onClick = onEnqueue) {
+                Icon(
+                    Icons.AutoMirrored.Filled.PlaylistAdd,
+                    contentDescription = "Add to queue",
+                    modifier = Modifier.size(22.dp),
+                )
+            }
+            IconButton(onClick = onRemove) {
+                Icon(Icons.Default.Close, contentDescription = "Remove", modifier = Modifier.size(22.dp))
+            }
         }
     }
 }

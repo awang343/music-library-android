@@ -88,17 +88,24 @@ class PlayerHolder {
             c.setMediaItem(item)
             c.prepare()
             c.play()
-        } else {
-            c.addMediaItem(item)
+            return
         }
+        val alreadyQueued = (0 until c.mediaItemCount).any {
+            c.getMediaItemAt(it).mediaId == item.mediaId
+        }
+        if (alreadyQueued) return
+        c.addMediaItem(item)
     }
 
     fun playFromList(items: List<MediaItem>, startIndex: Int = 0) {
         val c = controller ?: return
         if (items.isEmpty()) return
-        items.forEach { itemsById[it.mediaId] = it }
-        val start = startIndex.coerceIn(0, items.size - 1)
-        c.setMediaItems(items, start, 0L)
+        val seen = mutableSetOf<String>()
+        val deduped = items.filter { seen.add(it.mediaId) }
+        val targetId = items.getOrNull(startIndex)?.mediaId
+        val start = deduped.indexOfFirst { it.mediaId == targetId }.coerceAtLeast(0)
+        deduped.forEach { itemsById[it.mediaId] = it }
+        c.setMediaItems(deduped, start, 0L)
         c.prepare()
         c.play()
     }
@@ -129,6 +136,14 @@ class PlayerHolder {
         if (index in 0 until c.mediaItemCount) {
             c.removeMediaItem(index)
         }
+    }
+
+    fun moveQueueItem(from: Int, to: Int) {
+        val c = controller ?: return
+        if (from == to) return
+        if (from !in 0 until c.mediaItemCount) return
+        if (to !in 0 until c.mediaItemCount) return
+        c.moveMediaItem(from, to)
     }
 
     /**
