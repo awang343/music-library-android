@@ -17,6 +17,7 @@ data class Track(
     val bitrate: Long? = null,
     val sample_rate: Long? = null,
     val channels: Long? = null,
+    val added_at: Long = 0,
 ) {
     val displayTitle: String get() = title ?: path.substringAfterLast('/')
     val displayArtist: String get() = artist ?: album_artist ?: "—"

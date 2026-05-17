@@ -7,9 +7,11 @@ import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.WindowInsets
+import androidx.compose.foundation.layout.Spacer
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.padding
+import androidx.compose.foundation.layout.width
 import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.items
 import androidx.compose.foundation.text.KeyboardActions
@@ -17,6 +19,7 @@ import androidx.compose.foundation.text.KeyboardOptions
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.automirrored.filled.ArrowBack
 import androidx.compose.material.icons.automirrored.filled.PlaylistAdd
+import androidx.compose.material.icons.automirrored.filled.Sort
 import androidx.compose.material.icons.filled.Add
 import androidx.compose.material.icons.filled.LocalOffer
 import androidx.compose.material.icons.filled.PlayArrow
@@ -33,6 +36,7 @@ import androidx.compose.material3.ListItem
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.ModalBottomSheet
 import androidx.compose.material3.OutlinedTextField
+import androidx.compose.material3.RadioButton
 import androidx.compose.material3.Scaffold
 import androidx.compose.material3.Text
 import androidx.compose.material3.TextButton
@@ -75,6 +79,9 @@ fun SongsScreen(
     var searchResults by remember { mutableStateOf<List<Track>?>(null) }
     var searchLoading by remember { mutableStateOf(false) }
     var searchError by remember { mutableStateOf<String?>(null) }
+
+    var currentSort by remember { mutableStateOf(SortKey.DEFAULT) }
+    var sortOpen by remember { mutableStateOf(false) }
 
     val scope = rememberCoroutineScope()
 
@@ -136,6 +143,9 @@ fun SongsScreen(
                 TopAppBar(
                     title = { Text("Songs") },
                     actions = {
+                        IconButton(onClick = { sortOpen = true }) {
+                            Icon(Icons.AutoMirrored.Filled.Sort, contentDescription = "Sort")
+                        }
                         IconButton(onClick = { searchMode = true }) {
                             Icon(Icons.Default.Search, contentDescription = "Tag search")
                         }
@@ -168,11 +178,17 @@ fun SongsScreen(
                             modifier = Modifier.align(Alignment.Center).padding(16.dp),
                             color = MaterialTheme.colorScheme.onSurfaceVariant,
                         )
-                        else -> TrackList(
-                            tracks = searchResults!!,
-                            onPlay = onPlay,
-                            onLongPress = { actionFor = it },
-                        )
+                        else -> {
+                            val results = searchResults!!
+                            val sortedResults = remember(results, currentSort) {
+                                results.sortedWith(comparatorFor(currentSort))
+                            }
+                            TrackList(
+                                tracks = sortedResults,
+                                onPlay = onPlay,
+                                onLongPress = { actionFor = it },
+                            )
+                        }
                     }
                 }
             } else {
@@ -195,8 +211,8 @@ fun SongsScreen(
                             modifier = Modifier.align(Alignment.Center).padding(16.dp),
                         )
                         is SongsUiState.Ready -> {
-                            val visible = remember(s.tracks, query) {
-                                if (query.isBlank()) s.tracks
+                            val visible = remember(s.tracks, query, currentSort) {
+                                val filtered = if (query.isBlank()) s.tracks
                                 else {
                                     val q = query.trim().lowercase()
                                     s.tracks.filter {
@@ -205,6 +221,7 @@ fun SongsScreen(
                                             it.displayAlbum.lowercase().contains(q)
                                     }
                                 }
+                                filtered.sortedWith(comparatorFor(currentSort))
                             }
                             TrackList(
                                 tracks = visible,
@@ -246,6 +263,17 @@ fun SongsScreen(
             container = container,
             track = track,
             onDismiss = { tagsFor = null },
+        )
+    }
+
+    if (sortOpen) {
+        SortDialog(
+            current = currentSort,
+            onPick = {
+                currentSort = it
+                sortOpen = false
+            },
+            onDismiss = { sortOpen = false },
         )
     }
 
@@ -412,5 +440,78 @@ private fun PickPlaylistDialog(
         },
         confirmButton = {},
         dismissButton = { TextButton(onClick = onDismiss) { Text("Cancel") } },
+    )
+}
+
+enum class SortKey(val label: String) {
+    DEFAULT("Default (artist / album / track)"),
+    TITLE("Title (A–Z)"),
+    ARTIST("Artist (A–Z)"),
+    ALBUM("Album (A–Z)"),
+    DURATION("Duration (shortest first)"),
+    YEAR("Year (newest first)"),
+    ADDED_AT("Date added (newest first)"),
+}
+
+private fun comparatorFor(key: SortKey): Comparator<Track> = when (key) {
+    SortKey.DEFAULT -> compareBy(
+        { (it.album_artist ?: "").lowercase() },
+        { (it.album ?: "").lowercase() },
+        { it.disc_no ?: 0 },
+        { it.track_no ?: 0 },
+        { it.displayTitle.lowercase() },
+    )
+    SortKey.TITLE -> compareBy { it.displayTitle.lowercase() }
+    SortKey.ARTIST -> compareBy(
+        { it.displayArtist.lowercase() },
+        { it.displayAlbum.lowercase() },
+        { it.disc_no ?: 0 },
+        { it.track_no ?: 0 },
+    )
+    SortKey.ALBUM -> compareBy(
+        { it.displayAlbum.lowercase() },
+        { it.disc_no ?: 0 },
+        { it.track_no ?: 0 },
+    )
+    SortKey.DURATION -> compareBy { it.duration_ms ?: Long.MAX_VALUE }
+    SortKey.YEAR -> compareByDescending<Track> { it.year ?: Long.MIN_VALUE }
+        .thenBy { it.displayAlbum.lowercase() }
+        .thenBy { it.disc_no ?: 0 }
+        .thenBy { it.track_no ?: 0 }
+    SortKey.ADDED_AT -> compareByDescending { it.added_at }
+}
+
+@OptIn(ExperimentalMaterial3Api::class)
+@Composable
+private fun SortDialog(
+    current: SortKey,
+    onPick: (SortKey) -> Unit,
+    onDismiss: () -> Unit,
+) {
+    AlertDialog(
+        onDismissRequest = onDismiss,
+        title = { Text("Sort by") },
+        text = {
+            Column(verticalArrangement = Arrangement.spacedBy(4.dp)) {
+                SortKey.entries.forEach { k ->
+                    Row(
+                        modifier = Modifier
+                            .fillMaxWidth()
+                            .combinedClickableForBottomSheet { onPick(k) }
+                            .padding(vertical = 6.dp),
+                        verticalAlignment = Alignment.CenterVertically,
+                    ) {
+                        RadioButton(
+                            selected = k == current,
+                            onClick = { onPick(k) },
+                        )
+                        Spacer(Modifier.width(8.dp))
+                        Text(k.label)
+                    }
+                }
+            }
+        },
+        confirmButton = {},
+        dismissButton = { TextButton(onClick = onDismiss) { Text("Close") } },
     )
 }
